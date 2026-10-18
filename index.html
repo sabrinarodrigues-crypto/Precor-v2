@@ -236,9 +236,7 @@
     .sidebar.collapsed .sf-meta, .sidebar.collapsed .sf-logout{display:none;}
   }
 
-  .main{padding:20px 18px 60px;max-width:1080px;margin:0 auto;animation:main-fade-in .22s ease;}
-  @keyframes main-fade-in{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
-  @media (prefers-reduced-motion: reduce){ .main{animation:none;} }
+  .main{padding:20px 18px 60px;max-width:1080px;margin:0 auto;}
   .page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:12px;flex-wrap:wrap;}
   .page-head h1{font-size:clamp(19px,5vw,23px);}
   .page-head .muted{font-size:13px;margin-top:3px;}
@@ -782,9 +780,9 @@ const NAV_META = {
 const EMERGENCY_TYPES = [
   {type:'Incêndio', icon:ICONS.flame},
   {type:'Vazamento', icon:ICONS.drop},
-  {type:'Evacuação', icon:ICONS.run},
-  {type:'Falha de equipamento', icon:ICONS.gear},
-  {type:'Derramamento', icon:ICONS.drop},
+  {type:'Acidente', icon:ICONS.alert},
+  {type:'Emergência médica', icon:ICONS.medical},
+  {type:'Risco ambiental', icon:ICONS.leaf},
   {type:'Outra emergência', icon:ICONS.dots},
 ];
 
@@ -1041,9 +1039,15 @@ function findOccurrence(id){ return state.occurrences.find(o=>o.id===id); }
 /* Escopo de visualização por perfil: Liderança vê a própria área; Setor Responsável vê o
    que foi direcionado à sua função; Segurança do Trabalho e Administrador têm visão geral
    da unidade (função de supervisão plantwide). */
+function isOccurrenceForSector(o, user){
+  return user.role==='setor' && (
+    o.responsible===user.area ||
+    (o.responsible==='Setor da área' && o.area===user.area)
+  );
+}
 function occurrencesForUser(user){
   if(user.role==='lideranca') return state.occurrences.filter(o=>o.area===user.area);
-  if(user.role==='setor') return state.occurrences.filter(o=>o.responsible===user.area);
+  if(user.role==='setor') return state.occurrences.filter(o=>isOccurrenceForSector(o,user));
   return state.occurrences;
 }
 function sensorsForUser(user){
@@ -1059,7 +1063,7 @@ function isRelevantToBrigadista(o){
 function occurrenceInScope(o, user){
   if(user.role==='seguranca' || user.role==='admin') return true;
   if(user.role==='lideranca') return o.area===user.area;
-  if(user.role==='setor') return o.responsible===user.area;
+  if(user.role==='setor') return isOccurrenceForSector(o,user);
   if(user.role==='brigadista') return isRelevantToBrigadista(o);
   return false;
 }
@@ -1074,7 +1078,7 @@ function canAdvanceOccurrence(o, user){
   if(nextStep==='Encerrada') return false; // tratado pelo duplo-check dedicado
   if(user.role==='seguranca' || user.role==='admin') return true;
   if(user.role==='lideranca') return o.area===user.area;
-  if(user.role==='setor') return o.responsible===user.area;
+  if(user.role==='setor') return isOccurrenceForSector(o,user);
   if(user.role==='brigadista') return (o.status==='Encaminhada' || o.status==='Em atendimento') && isRelevantToBrigadista(o);
   return false;
 }
@@ -1164,7 +1168,20 @@ function toggleSidebarCollapse(){
 
 function render(){
   const app = document.getElementById('app');
-  app.innerHTML = state.screen==='login' ? renderLogin() : renderShell();
+  app.innerHTML = state.screen==='emergencia' ? renderEmergencia() : (state.screen==='login' ? renderLogin() : renderShell());
+}
+function renderPreservingFocus(inputId){
+  const current = document.getElementById(inputId);
+  const start = current && typeof current.selectionStart==='number' ? current.selectionStart : null;
+  const end = current && typeof current.selectionEnd==='number' ? current.selectionEnd : null;
+  render();
+  const next = document.getElementById(inputId);
+  if(next){
+    next.focus();
+    if(start!==null && end!==null && typeof next.setSelectionRange==='function'){
+      next.setSelectionRange(start,end);
+    }
+  }
 }
 
 /* ============================= LOGIN ============================= */
@@ -1196,6 +1213,7 @@ function renderLogin(){
       </div>
       <div class="login-error">${state.loginError}</div>
       <button class="btn btn-primary btn-block btn-lg" onclick="doLogin()">Entrar →</button>
+      <button class="login-emergency-entry" type="button" onclick="abrirEmergencia(\'login\')">${ICONS.boltLg}<span>EMERGÊNCIA<br><small style="font-weight:500;">Acesso rápido, sem login</small></span></button>
 
       <button class="login-help-link" onclick="state.showDemoUsers=!state.showDemoUsers; render();">${ICONS.help} Ver usuários de demonstração</button>
 
@@ -1334,7 +1352,7 @@ function renderGlobalSearch(){
 function renderShell(){
   const u = state.user;
   const navItems = ROLE_NAV[u.role];
-  const unreadAlerts = state.alerts.filter(a=>!a.read).length;
+  const unreadAlerts = alertsForUser(u).filter(a=>!isAlertRead(a,u)).length;
   const openOcc = occurrencesForUser(u).filter(o=>o.status!=='Encerrada').length;
 
   return `
@@ -1409,7 +1427,7 @@ function renderScreen(){
 function renderDashboard(){
   const u = state.user;
   const hasOccView = ROLE_NAV[u.role].includes('ocorrencias') || ROLE_NAV[u.role].includes('gestao');
-  const myAlerts = state.alerts.filter(a=>a.targetRoles.includes(u.role));
+  const myAlerts = alertsForUser(u);
   const criticosAtivos = myAlerts.filter(a=>a.level==='critico');
 
   if(!hasOccView){
@@ -1435,7 +1453,7 @@ function renderDashboard(){
       </div>
       ${recentesAlertas.length===0 ? '<div class="card empty-state">Nenhum alerta direcionado a você no momento.</div>' : recentesAlertas.map(a=>`
         <div class="card alert-card ${a.level}" onclick="navigate('alertas')" style="cursor:pointer;">
-          <div class="alert-tags">${critBadge(a.level)}${!a.read ? '<span class="badge badge-novo">Novo</span>' : ''}</div>
+          <div class="alert-tags">${critBadge(a.level)}${!isAlertRead(a,u) ? '<span class="badge badge-novo">Novo</span>' : ''}</div>
           <b class="a-title">${a.title}</b>
           <div class="alert-meta-row"><span>${a.timestamp}</span><span>${a.area}</span></div>
         </div>`).join('')}`;
@@ -1550,7 +1568,7 @@ function renderRegistrar(){
       </div>
 
       <div class="form-section form-grid-2">
-        <div><label class="field-label">Data e hora</label><input id="f-datetime" type="datetime-local" value="${new Date().toISOString().slice(0,16)}"></div>
+        <div><label class="field-label">Data e hora</label><input id="f-datetime" type="datetime-local" value="${d.datetime || new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16)}"></div>
         <div><label class="field-label">Responsável / setor</label>
           <select id="f-resp">
             ${['Segurança do Trabalho','Manutenção Elétrica','Setor da área','Administrador/TI'].map(r=>`<option ${d.responsible===r?'selected':''}>${r}</option>`).join('')}
@@ -1596,8 +1614,24 @@ function toggleBrigada(){
   render();
 }
 function captureDraft(){
-  if(state.formDraft) return;
-  state.formDraft = {type:'Vazamento', description:'', location:'', area:'Produção — Reatores', criticality:'medio', responsible:'Segurança do Trabalho', observations:'', brigada:false};
+  const d = state.formDraft || {
+    type:'Vazamento', description:'', location:'', area:'Produção — Reatores',
+    criticality:'medio', responsible:'Segurança do Trabalho', observations:'',
+    brigada:false, datetime:''
+  };
+  const readField = (id, fallback) => {
+    const el = document.getElementById(id);
+    return el ? el.value : fallback;
+  };
+  state.formDraft = {
+    ...d,
+    description:readField('f-desc', d.description || ''),
+    location:readField('f-loc', d.location || ''),
+    area:readField('f-area', d.area || 'Produção — Reatores'),
+    responsible:readField('f-resp', d.responsible || 'Segurança do Trabalho'),
+    observations:readField('f-obs', d.observations || ''),
+    datetime:readField('f-datetime', d.datetime || '')
+  };
 }
 
 function submitOccurrence(){
@@ -1609,6 +1643,9 @@ function submitOccurrence(){
   const criticality = state.formDraft.criticality;
   const responsible = document.getElementById('f-resp').value;
   const observations = document.getElementById('f-obs').value.trim();
+  const datetimeInput = document.getElementById('f-datetime');
+  const incidentDateValue = datetimeInput ? datetimeInput.value : state.formDraft.datetime;
+  const incidentDate = incidentDateValue ? new Date(incidentDateValue) : new Date();
   const brigada = !!state.formDraft.brigada;
 
   if(!description || !location){
@@ -1616,6 +1653,12 @@ function submitOccurrence(){
     render();
     return;
   }
+  if(!incidentDateValue || isNaN(incidentDate.getTime())){
+    state.registrarError = 'Informe uma data e hora válidas para a ocorrência.';
+    render();
+    return;
+  }
+  state.formDraft = {...state.formDraft, description, location, area, responsible, observations, datetime:incidentDateValue};
   state.registrarError = '';
 
   occurrenceSeq += 1;
@@ -1626,7 +1669,7 @@ function submitOccurrence(){
   const encaminhadaNote = 'Encaminhada automaticamente para '+responsible+'.' + (brigada ? ' Brigada de Emergência acionada para resposta imediata em campo.' : '');
   const newOcc = {
     id: protocol, type, description, location, area, criticality,
-    datetime: now.toISOString(), responsible, status: 'Encaminhada', observations,
+    datetime: incidentDate.toISOString(), responsible, status: 'Encaminhada', observations,
     history:[
       {step:'Registrada', by:state.user.name, at:nowLabel, note:'Ocorrência registrada pelo usuário.'},
       {step:'Encaminhada', by:'Sistema PRECOR', at:nowLabel, note:encaminhadaNote},
@@ -1635,7 +1678,14 @@ function submitOccurrence(){
 
   const alertId = 'AL-' + (3300 + state.alerts.length + 4);
   const targetRolesByCrit = {baixo:['setor'], medio:['seguranca','setor'], alto:['seguranca'], critico:['seguranca','admin']};
-  const targetRoles = [...targetRolesByCrit[criticality]];
+  const targetRoles = [...(targetRolesByCrit[criticality] || targetRolesByCrit.medio)];
+  const responsibleRole = {
+    'Segurança do Trabalho':'seguranca',
+    'Manutenção Elétrica':'setor',
+    'Setor da área':'setor',
+    'Administrador/TI':'admin'
+  }[responsible];
+  if(responsibleRole && !targetRoles.includes(responsibleRole)) targetRoles.push(responsibleRole);
   if(brigada && !targetRoles.includes('brigadista')) targetRoles.push('brigadista');
   const newAlert = {
     id:alertId, occurrenceId:protocol, level:criticality, category:'Ocorrência',
@@ -1659,13 +1709,17 @@ function submitOccurrence(){
 
 /* ============================= EMERGÊNCIA (fluxo rápido) ============================= */
 
-function abrirEmergencia(){
+function abrirEmergencia(returnTo){
+  state.emergencyReturnScreen = returnTo || (state.user ? 'dashboard' : 'login');
   state.emergencyStep = 1;
   state.emergencyDraft = {type:'', location:'', detail:''};
   state.lastEmergencyProtocol = null;
-  navigate('emergencia');
+  state.emergencyError = '';
+  state.screen = 'emergencia';
+  state.sidebarOpen = false;
+  render();
 }
-function cancelEmergency(){ navigate('dashboard'); }
+function cancelEmergency(){ state.lastEmergencyProtocol=null; state.screen=state.user?'dashboard':'login'; render(); }
 
 function selectEmergencyType(type){
   state.emergencyDraft.type = type;
@@ -1783,7 +1837,7 @@ function renderOcorrencias(){
 
   return `
     <div class="dim" style="font-size:12.5px;font-weight:600;margin-bottom:14px;">${scopeDescription(state.user)}</div>
-    <div class="search-box">${ICONS.search}<input type="text" placeholder="Buscar por título ou área..." value="${state.occSearch}" oninput="state.occSearch=this.value; render();"></div>
+    <div class="search-box">${ICONS.search}<input id="occ-search" type="text" placeholder="Buscar por título ou área..." value="${state.occSearch}" oninput="state.occSearch=this.value; renderPreservingFocus('occ-search');"></div>
     <div class="chip-row">${statusTabs.map(s=>`<button class="chip ${state.occStatusTab===s?'active':''}" onclick="state.occStatusTab='${s}'; render();">${s}</button>`).join('')}</div>
     <div class="chip-row">${critTabs.map(c=>`<button class="chip ${state.occCritTab===c?'active':''}" onclick="state.occCritTab='${c}'; render();">${c==='Todos'?'Todos':fmtCrit(c)}</button>`).join('')}</div>
     <div class="results-count">${list.length} ocorrência${list.length===1?'':'s'} encontrada${list.length===1?'':'s'}</div>
@@ -1902,6 +1956,7 @@ function renderDetalhe(){
 
 function confirmarEncerramento(id){
   const o = findOccurrence(id);
+  if(!o || !canCloseOccurrence(o,state.user)) return;
   o.status = 'Encerrada';
   o.history.push({step:'Encerrada', by:state.user.name, at:formatDatetime(new Date().toISOString()), note:'Encerramento confirmado após verificação da Segurança do Trabalho (duplo-check).'});
   showToast('Ocorrência '+o.id+' encerrada.', 'sucesso');
@@ -1910,6 +1965,7 @@ function confirmarEncerramento(id){
 }
 function reabrirOcorrencia(id){
   const o = findOccurrence(id);
+  if(!o || !canCloseOccurrence(o,state.user)) return;
   o.status = 'Em atendimento';
   o.history.push({step:'Em atendimento', by:state.user.name, at:formatDatetime(new Date().toISOString()), note:'Ocorrência reaberta — resolução não confirmada no duplo-check da Segurança do Trabalho.'});
   showToast('Ocorrência '+o.id+' reaberta.', 'alerta');
@@ -1918,6 +1974,8 @@ function reabrirOcorrencia(id){
 }
 
 function abrirResolucaoForm(id){
+  const o = findOccurrence(id);
+  if(!o || !canAdvanceOccurrence(o,state.user) || TIMELINE_STEPS[TIMELINE_STEPS.indexOf(o.status)+1]!=='Resolvida') return;
   state.resolveNoteOpen = true;
   state.resolveNoteOccId = id;
   state.resolveNoteImage = null;
@@ -1935,13 +1993,15 @@ function cancelarResolucao(){
   render();
 }
 function confirmarResolucao(id){
-  const texto = document.getElementById('resolve-note').value.trim();
+  const o = findOccurrence(id);
+  if(!o || !canAdvanceOccurrence(o,state.user) || TIMELINE_STEPS[TIMELINE_STEPS.indexOf(o.status)+1]!=='Resolvida') return;
+  const noteEl = document.getElementById('resolve-note');
+  const texto = noteEl ? noteEl.value.trim() : '';
   if(!texto){
     state.resolveError = 'Descreva rapidamente como a ocorrência foi resolvida.';
     render();
     return;
   }
-  const o = findOccurrence(id);
   o.status = 'Resolvida';
   const entry = {step:'Resolvida', by:state.user.name, at:formatDatetime(new Date().toISOString()), note:texto};
   if(state.resolveNoteImage) entry.image = state.resolveNoteImage;
@@ -1957,6 +2017,8 @@ function confirmarResolucao(id){
 }
 
 function abrirAvancoForm(id){
+  const o = findOccurrence(id);
+  if(!o || !canAdvanceOccurrence(o,state.user)) return;
   state.advanceFormOpen = true;
   state.advanceFormOccId = id;
   state.advanceFormImage = null;
@@ -1973,6 +2035,7 @@ function cancelarAvanco(){
 }
 function confirmarAvanco(id){
   const o = findOccurrence(id);
+  if(!o || !canAdvanceOccurrence(o,state.user)) return;
   const idx = TIMELINE_STEPS.indexOf(o.status);
   const next = TIMELINE_STEPS[idx+1];
   if(!next || next==='Encerrada') return; // encerramento passa pelo duplo-check dedicado
@@ -2031,18 +2094,30 @@ function renderAttachWidget(imageKey, nameKey){
 
 /* ============================= CENTRAL DE ALERTAS ============================= */
 
+function alertsForUser(user=state.user){
+  return state.alerts.filter(a=>Array.isArray(a.targetRoles) && a.targetRoles.includes(user.role));
+}
+function isAlertRead(alert, user=state.user){
+  return !!alert.read || (Array.isArray(alert.readBy) && alert.readBy.includes(user.name));
+}
+function markAlertReadForUser(alert, user=state.user){
+  if(!Array.isArray(alert.readBy)) alert.readBy = [];
+  if(!alert.readBy.includes(user.name)) alert.readBy.push(user.name);
+}
+
 function renderAlertas(){
   const u = state.user;
-  const naoLidos = state.alerts.filter(a=>!a.read);
-  const criticos = state.alerts.filter(a=>a.level==='critico');
+  const meusAlertas = alertsForUser(u);
+  const naoLidos = meusAlertas.filter(a=>!isAlertRead(a,u));
+  const criticos = meusAlertas.filter(a=>a.level==='critico');
   let list;
   if(state.alertTab==='nao-lidos') list = naoLidos;
   else if(state.alertTab==='criticos') list = criticos;
-  else list = state.alerts;
+  else list = meusAlertas;
 
   return `
     <div class="tab-row">
-      <button class="chip ${state.alertTab==='todos'?'active':''}" onclick="setAlertTab('todos')">Todos (${state.alerts.length})</button>
+      <button class="chip ${state.alertTab==='todos'?'active':''}" onclick="setAlertTab('todos')">Todos (${meusAlertas.length})</button>
       <button class="chip ${state.alertTab==='nao-lidos'?'active':''}" onclick="setAlertTab('nao-lidos')">Não lidos (${naoLidos.length})</button>
       <button class="chip ${state.alertTab==='criticos'?'active':''}" onclick="setAlertTab('criticos')">Críticos</button>
       <button class="btn-link" style="margin-left:auto;" onclick="marcarTodasLidas()">Marcar todas como lidas</button>
@@ -2056,18 +2131,18 @@ function renderAlertas(){
         <div class="alert-tags">
           <span class="badge badge-outline">${a.category}</span>
           ${critBadge(a.level)}
-          ${!a.read ? '<span class="badge badge-novo">Novo</span>' : ''}
+          ${!isAlertRead(a,u) ? '<span class="badge badge-novo">Novo</span>' : ''}
           ${linkedOcc ? statusBadge(linkedOcc.status) : ''}
         </div>
         <b class="a-title">${a.title}</b>
         <p>${a.message}</p>
         <div class="alert-meta-row"><span>${a.timestamp}</span><span>${a.area}</span></div>
         <div class="alert-actions">
-          ${!a.read ? '<button class="btn btn-sm" onclick="marcarLida(\''+a.id+'\')">Marcar lida</button>' : ''}
+          ${!isAlertRead(a,u) ? '<button class="btn btn-sm" onclick="marcarLida(\''+a.id+'\')">Marcar lida</button>' : ''}
           ${confirmed
             ? '<span class="badge badge-encerrada">'+ICONS.check+' Confirmado</span>' + (linkedOcc ? '<button class="btn btn-sm" onclick="abrirOcorrencia(\''+a.occurrenceId+'\')">Ver ocorrência</button>' : '')
             : (canAttend
-                ? '<button class="btn btn-maroon btn-sm" onclick="confirmarEAtender(\''+a.id+'\',\''+a.occurrenceId+'\')">Confirmar e atender ocorrência</button>'
+                ? '<button class="btn btn-maroon btn-sm" onclick="confirmarEAtender(\''+a.id+'\',\''+a.occurrenceId+'\')">Confirmar e abrir ocorrência</button>'
                 : '<button class="btn btn-maroon btn-sm" onclick="confirmarAlerta(\''+a.id+'\')">Confirmar recebimento</button>' + (linkedOcc ? '<button class="btn btn-sm" onclick="abrirOcorrencia(\''+a.occurrenceId+'\')">Ver ocorrência</button>' : ''))}
         </div>
         ${!linkedOcc ? '<div class="dim" style="font-size:11.5px;margin-top:10px;">Alerta informativo — nenhuma ação adicional necessária.</div>' : ''}
@@ -2077,16 +2152,30 @@ function renderAlertas(){
 }
 
 function setAlertTab(tab){ state.alertTab = tab; render(); }
-function marcarLida(id){ const a = state.alerts.find(x=>x.id===id); if(a) a.read=true; render(); }
-function marcarTodasLidas(){ state.alerts.forEach(a=>a.read=true); render(); }
+function marcarLida(id){
+  const a = state.alerts.find(x=>x.id===id);
+  if(a && a.targetRoles.includes(state.user.role)) markAlertReadForUser(a);
+  render();
+}
+function marcarTodasLidas(){
+  alertsForUser(state.user).forEach(a=>markAlertReadForUser(a));
+  render();
+}
 function confirmarAlerta(id){
   const a = state.alerts.find(x=>x.id===id);
-  if(a){ if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name); a.read=true; logAudit('Alerta confirmado', a.id+' — '+a.title); }
+  if(!a || !a.targetRoles.includes(state.user.role)) return;
+  if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name);
+  markAlertReadForUser(a);
+  logAudit('Alerta confirmado', a.id+' — '+a.title);
   render();
 }
 function confirmarEAtender(alertId, occurrenceId){
   const a = state.alerts.find(x=>x.id===alertId);
-  if(a){ if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name); a.read=true; logAudit('Alerta confirmado e ocorrência atendida', a.id+' — '+a.title); }
+  const occurrence = findOccurrence(occurrenceId);
+  if(!a || !a.targetRoles.includes(state.user.role) || !occurrence || !occurrenceInScope(occurrence, state.user)) return;
+  if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name);
+  markAlertReadForUser(a);
+  logAudit('Alerta confirmado e ocorrência atendida', a.id+' — '+a.title);
   abrirOcorrencia(occurrenceId);
 }
 
@@ -2099,7 +2188,7 @@ function renderProcedimentos(){
   const canManage = state.user.role==='seguranca' || state.user.role==='admin';
 
   return `
-    <div class="search-box">${ICONS.search}<input type="text" placeholder="Buscar procedimentos..." value="${state.procSearch}" oninput="state.procSearch=this.value; render();"></div>
+    <div class="search-box">${ICONS.search}<input id="proc-search" type="text" placeholder="Buscar procedimentos..." value="${state.procSearch}" oninput="state.procSearch=this.value; renderPreservingFocus('proc-search');"></div>
     <div class="chip-row">${cats.map(c=>`<button class="chip ${state.procCategory===c?'active':''}" onclick="state.procCategory='${c}'; render();">${c}</button>`).join('')}</div>
     <div class="results-count">${list.length} procedimento${list.length===1?'':'s'} encontrado${list.length===1?'':'s'}</div>
     ${canManage ? '<button class="btn" style="margin-bottom:14px;" onclick="showToast(\'Cadastro de novo procedimento — funcionalidade de demonstração.\', \'info\')">+ Novo procedimento</button>' : ''}
@@ -2361,6 +2450,10 @@ function startMonitorJitter(){
       s._hist = (s._hist || []).concat(s.value).slice(-6);
     });
     checkPredictiveAlerts();
+    // Não substitua o DOM enquanto o usuário preenche uma leitura manual.
+    // Os valores simulados continuam atualizando em state e a tela será redesenhada
+    // quando o formulário for enviado ou fechado.
+    if(state.screen==='monitoramento' && state.readingFormOpen) return;
     if(state.screen==='monitoramento' || state.screen==='dashboard') render();
   }, 3500);
 }

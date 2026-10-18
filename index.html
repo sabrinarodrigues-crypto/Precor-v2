@@ -1794,7 +1794,7 @@ function submitEmergency(){
     datetime: now.toISOString(), responsible:'Brigada de Emergência', status:'Encaminhada',
     observations:'Registrada pelo fluxo rápido de emergência.',
     history:[
-      {step:'Registrada', by:state.user.name, at:nowLabel, note:'Registrada via fluxo rápido de emergência (registro simplificado).'},
+      {step:'Registrada', by:state.user ? state.user.name : 'Relato sem login', at:nowLabel, note:'Registrada via fluxo rápido de emergência (registro simplificado).'},
       {step:'Encaminhada', by:'Sistema PRECOR', at:nowLabel, note:'Encaminhamento automático crítico para Brigada, Segurança do Trabalho e Administração.'},
     ], alertsSent:[]
   };
@@ -1811,7 +1811,7 @@ function submitEmergency(){
   state.alerts.unshift(newAlert);
   state.lastEmergencyProtocol = protocol;
   logAudit('Emergência registrada (fluxo rápido)', protocol+' — '+type+' ('+location+')');
-  showToast('Emergência registrada: '+type+' — '+location, 'critico');
+  showToast('Emergência registrada no protótipo: '+type+' — '+location+'. Nenhuma notificação real foi enviada.', 'critico');
   render();
 }
 
@@ -1822,8 +1822,8 @@ function renderEmergencia(){
     <div class="emg-wrap">
       <div class="card confirm-box">
         <div class="emg-confirm-icon">${ICONS.check}</div>
-        <h2 style="font-size:20px;">Alerta enviado</h2>
-        <div class="muted" style="margin-top:6px;">Brigada de Emergência, Segurança do Trabalho e Administração foram notificados imediatamente.</div>
+        <h2 style="font-size:20px;">Emergência registrada</h2>
+        <div class="muted" style="margin-top:6px;">Registro criado no protótipo. Nenhuma notificação real foi enviada. Em uma emergência real, acione imediatamente os canais oficiais e a equipe responsável.</div>
         <div class="protocol">${proto}</div>
         <div class="dim" style="font-size:11.5px;text-transform:uppercase;font-weight:700;">Número de protocolo</div>
         <div class="form-actions" style="margin-top:26px;">

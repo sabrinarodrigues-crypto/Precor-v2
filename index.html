@@ -1934,8 +1934,7 @@ function renderEmergencia(){
           ${state.user
             ? `<button class="btn" onclick="state.lastEmergencyProtocol=null;navigate('dashboard')">Voltar ao painel</button>
                <button class="btn btn-maroon" onclick="abrirOcorrencia('${proto}')">Ver ocorrência</button>`
-            : `<button class="btn" onclick="state.lastEmergencyProtocol=null;state.screen='login';render()">Voltar ao login</button>
-               <button class="btn btn-maroon" onclick="state.lastEmergencyProtocol=null;state.screen='login';render()">Ir para o login</button>`}
+            : `<button class="btn btn-maroon" onclick="state.lastEmergencyProtocol=null;state.screen='login';render()">Voltar ao login</button>`}
         </div>
       </div>
     </div>`;

@@ -916,7 +916,7 @@ const state = {
   alertTab:'todos', procCategory:'Todos', procSearch:'',
   occStatusTab:'Todas', occCritTab:'Todos', occSearch:'',
   gestaoFilters:{data:'', area:'Todas', criticidade:'Todas', status:'Todas', tipo:'Todas'},
-  formDraft:null, lastConfirmedProtocol:null, registrarError:'',
+  formDraft:null, lastConfirmedProtocol:null, registrarError:'', formEvidenceImage:null, formEvidenceImageName:'', formEvidenceImageLoading:false,
   monitorAnomalyActive:false, monitorSimTimer:null,
   monitorTab:'tempo-real', readingFormOpen:false, readingDraft:null, readingError:'',
   emergencyStep:1, emergencyDraft:{type:'', location:'', detail:''}, lastEmergencyProtocol:null, emergencyError:'',
@@ -1611,6 +1611,12 @@ function renderRegistrar(){
       <div class="dim" style="font-size:12px;margin-top:-8px;margin-bottom:16px;">Informe somente os dados necessários para o atendimento. Este protótipo não possui armazenamento persistente.</div>
 
       <div class="form-section">
+        <label class="field-label">Evidência da ocorrência (opcional)</label>
+        ${renderAttachWidget('formEvidenceImage','formEvidenceImageName')}
+        <div class="dim" style="font-size:12px;margin-top:5px;">Anexe uma imagem de até 5 MB. No protótipo, o arquivo fica apenas na sessão atual e pode ser perdido ao recarregar a página.</div>
+      </div>
+
+      <div class="form-section">
         <label class="field-label">Observações (opcional)</label>
         <textarea id="f-obs" placeholder="Informações adicionais relevantes...">${d.observations}</textarea>
       </div>
@@ -1662,6 +1668,7 @@ function captureDraft(){
 
 function submitOccurrence(){
   captureDraft();
+  if(state.formEvidenceImageLoading){ state.registrarError='Aguarde o carregamento da imagem antes de registrar.'; render(); return; }
   const type = state.formDraft.type;
   const description = document.getElementById('f-desc').value.trim();
   const location = document.getElementById('f-loc').value.trim();
@@ -1700,6 +1707,7 @@ function submitOccurrence(){
     id: protocol, type, description, location, area, criticality,
     datetime: incidentDate.toISOString(), responsible, status: 'Encaminhada', observations,
     measuresTaken, collaboratorInvolved, collaboratorReference,
+    evidenceImage:state.formEvidenceImage || null, evidenceImageName:state.formEvidenceImageName || '',
     history:[
       {step:'Registrada', by:state.user.name, at:nowLabel, note:'Ocorrência registrada pelo usuário.'},
       {step:'Encaminhada', by:'Sistema PRECOR', at:nowLabel, note:encaminhadaNote},
@@ -1728,6 +1736,9 @@ function submitOccurrence(){
   state.alerts.unshift(newAlert);
   state.lastConfirmedProtocol = protocol;
   state.formDraft = null;
+  state.formEvidenceImage = null;
+  state.formEvidenceImageName = '';
+  state.formEvidenceImageLoading = false;
   logAudit('Ocorrência registrada', protocol+' — '+type+' ('+fmtCrit(criticality)+', '+location+')');
   if(criticality==='critico'){
     showToast('Ocorrência crítica registrada: '+type+' — '+location, 'critico');
@@ -1977,6 +1988,7 @@ function renderDetalhe(){
       ${o.measuresTaken ? '<div class="dg-item"><span>Medidas tomadas no registro</span><b style="font-weight:500;">'+o.measuresTaken+'</b></div>' : ''}
       ${o.collaboratorInvolved ? '<div class="dg-item"><span>Envolve colaborador?</span><b style="font-weight:500;">'+o.collaboratorInvolved+'</b></div>' : ''}
       ${o.collaboratorReference ? '<div class="dg-item"><span>Identificação do colaborador</span><b style="font-weight:500;">'+o.collaboratorReference+'</b></div>' : ''}
+      ${o.evidenceImage ? '<div class="dg-item"><span>Evidência anexada</span><b style="font-weight:500;">'+(o.evidenceImageName || 'Imagem anexada')+'</b><img class="history-image" src="'+o.evidenceImage+'" alt="Evidência da ocorrência" onclick="window.open(this.src)"></div>' : ''}
       ${actionBlock}
     </div>
 

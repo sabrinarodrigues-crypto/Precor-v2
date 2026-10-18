@@ -1407,7 +1407,7 @@ function renderShell(){
     ${state.onboardingOpen ? renderOnboarding() : ''}
 
     <div class="shell"><main class="main">${renderScreen()}</main></div>
-    ${state.screen!=='emergencia' ? '<button class="fab-emergency" onclick="abrirEmergencia()">'+ICONS.bolt+'<span class="fab-label">Emergência</span></button>' : ''}`;
+    `;
 }
 
 function renderScreen(){

@@ -912,7 +912,7 @@ const state = {
   procedures: JSON.parse(JSON.stringify(seedProcedures)),
   sensors: JSON.parse(JSON.stringify(seedSensors)),
   readings: JSON.parse(JSON.stringify(seedReadings)),
-  selectedOccurrenceId:null, selectedProcedureId:null,
+  selectedOccurrenceId:null, selectedProcedureId:null, occurrenceBackTarget:null,
   alertTab:'todos', procCategory:'Todos', procSearch:'',
   occStatusTab:'Todas', occCritTab:'Todos', occSearch:'',
   gestaoFilters:{data:'', area:'Todas', criticidade:'Todas', status:'Todas', tipo:'Todas'},
@@ -1841,7 +1841,8 @@ function renderOcorrencias(){
   if(state.occSearch.trim()) list = list.filter(o=>(o.type+' '+o.location+' '+o.area).toLowerCase().includes(state.occSearch.toLowerCase()));
 
   return `
-    <div class="dim" style="font-size:12.5px;font-weight:600;margin-bottom:14px;">${scopeDescription(state.user)}</div>
+    <div class="dim" style="font-size:12.5px;font-weight:600;margin-bottom:8px;">${scopeDescription(state.user)}</div>
+    <div class="dim" style="font-size:13px;margin-bottom:14px;">Selecione uma ocorrência para consultar o histórico e, conforme sua permissão, atualizar o status e registrar as medidas tomadas.</div>
     <div class="search-box">${ICONS.search}<input id="occ-search" type="text" placeholder="Buscar por título ou área..." value="${state.occSearch}" oninput="state.occSearch=this.value; renderPreservingFocus('occ-search');"></div>
     <div class="chip-row">${statusTabs.map(s=>`<button class="chip ${state.occStatusTab===s?'active':''}" onclick="state.occStatusTab='${s}'; render();">${s}</button>`).join('')}</div>
     <div class="chip-row">${critTabs.map(c=>`<button class="chip ${state.occCritTab===c?'active':''}" onclick="state.occCritTab='${c}'; render();">${c==='Todos'?'Todos':fmtCrit(c)}</button>`).join('')}</div>
@@ -1851,10 +1852,11 @@ function renderOcorrencias(){
         <div class="occ-top"><b>${o.type} — ${o.location}</b>${critBadge(o.criticality)}</div>
         <div class="occ-tags">${o.id} ${statusBadge(o.status)}</div>
         <div class="occ-meta">${o.area} · ${formatDatetime(o.datetime)}</div>
+        <div class="dim" style="font-size:12px;margin-top:10px;font-weight:600;">Ver detalhes, histórico e ações →</div>
       </div>`).join('')}`;
 }
 
-function abrirOcorrencia(id){ navigate('detalhe', {selectedOccurrenceId:id}); }
+function abrirOcorrencia(id){ state.occurrenceBackTarget = state.screen; navigate('detalhe', {selectedOccurrenceId:id}); }
 
 /* ============================= DETALHE DA OCORRÊNCIA ============================= */
 
@@ -1868,7 +1870,8 @@ function renderDetalhe(){
   const nextStep = TIMELINE_STEPS[stepIndex+1];
   const advanceLabel = nextStep==='Resolvida' ? 'Marcar como resolvida' : 'Avançar para "'+nextStep+'"';
 
-  const backTarget = ROLE_NAV[state.user.role].includes('gestao') ? 'gestao' : (ROLE_NAV[state.user.role].includes('ocorrencias') ? 'ocorrencias' : 'alertas');
+  const roleBackTarget = ROLE_NAV[state.user.role].includes('gestao') ? 'gestao' : (ROLE_NAV[state.user.role].includes('ocorrencias') ? 'ocorrencias' : 'alertas');
+  const backTarget = ['ocorrencias','gestao','dashboard','alertas'].includes(state.occurrenceBackTarget) ? state.occurrenceBackTarget : roleBackTarget;
 
   let actionBlock = '';
   const brigadistaResolving = state.user.role==='brigadista' && nextStep==='Resolvida';
@@ -1926,6 +1929,7 @@ function renderDetalhe(){
     </div>
 
     <div class="card panel-pad" style="margin-bottom:16px;">
+      <div class="dim" style="font-size:12.5px;margin-bottom:12px;">Acompanhe a evolução abaixo. As ações disponíveis para atualizar o status aparecem após as informações da ocorrência, conforme o perfil de acesso.</div>
       <div class="timeline">
         ${TIMELINE_STEPS.map((s,i)=>`<div class="tl-step ${i<stepIndex?'done':''} ${i===stepIndex?'current':''}"><div class="tl-dot"></div><span>${s}</span></div>`).join('')}
       </div>

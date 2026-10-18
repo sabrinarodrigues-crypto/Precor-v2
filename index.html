@@ -1407,7 +1407,7 @@ function renderScreen(){
 function renderDashboard(){
   const u = state.user;
   const hasOccView = ROLE_NAV[u.role].includes('ocorrencias') || ROLE_NAV[u.role].includes('gestao');
-  const myAlerts = state.alerts.filter(a=>a.targetRoles.includes(u.role));
+  const myAlerts = alertsForUser(u);
   const criticosAtivos = myAlerts.filter(a=>a.level==='critico');
 
   if(!hasOccView){
@@ -2029,18 +2029,23 @@ function renderAttachWidget(imageKey, nameKey){
 
 /* ============================= CENTRAL DE ALERTAS ============================= */
 
+function alertsForUser(user=state.user){
+  return state.alerts.filter(a=>Array.isArray(a.targetRoles) && a.targetRoles.includes(user.role));
+}
+
 function renderAlertas(){
   const u = state.user;
-  const naoLidos = state.alerts.filter(a=>!a.read);
-  const criticos = state.alerts.filter(a=>a.level==='critico');
+  const meusAlertas = alertsForUser(u);
+  const naoLidos = meusAlertas.filter(a=>!a.read);
+  const criticos = meusAlertas.filter(a=>a.level==='critico');
   let list;
   if(state.alertTab==='nao-lidos') list = naoLidos;
   else if(state.alertTab==='criticos') list = criticos;
-  else list = state.alerts;
+  else list = meusAlertas;
 
   return `
     <div class="tab-row">
-      <button class="chip ${state.alertTab==='todos'?'active':''}" onclick="setAlertTab('todos')">Todos (${state.alerts.length})</button>
+      <button class="chip ${state.alertTab==='todos'?'active':''}" onclick="setAlertTab('todos')">Todos (${meusAlertas.length})</button>
       <button class="chip ${state.alertTab==='nao-lidos'?'active':''}" onclick="setAlertTab('nao-lidos')">Não lidos (${naoLidos.length})</button>
       <button class="chip ${state.alertTab==='criticos'?'active':''}" onclick="setAlertTab('criticos')">Críticos</button>
       <button class="btn-link" style="margin-left:auto;" onclick="marcarTodasLidas()">Marcar todas como lidas</button>
@@ -2075,16 +2080,30 @@ function renderAlertas(){
 }
 
 function setAlertTab(tab){ state.alertTab = tab; render(); }
-function marcarLida(id){ const a = state.alerts.find(x=>x.id===id); if(a) a.read=true; render(); }
-function marcarTodasLidas(){ state.alerts.forEach(a=>a.read=true); render(); }
+function marcarLida(id){
+  const a = state.alerts.find(x=>x.id===id);
+  if(a && a.targetRoles.includes(state.user.role)) a.read=true;
+  render();
+}
+function marcarTodasLidas(){
+  alertsForUser(state.user).forEach(a=>a.read=true);
+  render();
+}
 function confirmarAlerta(id){
   const a = state.alerts.find(x=>x.id===id);
-  if(a){ if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name); a.read=true; logAudit('Alerta confirmado', a.id+' — '+a.title); }
+  if(!a || !a.targetRoles.includes(state.user.role)) return;
+  if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name);
+  a.read=true;
+  logAudit('Alerta confirmado', a.id+' — '+a.title);
   render();
 }
 function confirmarEAtender(alertId, occurrenceId){
   const a = state.alerts.find(x=>x.id===alertId);
-  if(a){ if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name); a.read=true; logAudit('Alerta confirmado e ocorrência atendida', a.id+' — '+a.title); }
+  const occurrence = findOccurrence(occurrenceId);
+  if(!a || !a.targetRoles.includes(state.user.role) || !occurrence || !occurrenceInScope(occurrence, state.user)) return;
+  if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name);
+  a.read=true;
+  logAudit('Alerta confirmado e ocorrência atendida', a.id+' — '+a.title);
   abrirOcorrencia(occurrenceId);
 }
 

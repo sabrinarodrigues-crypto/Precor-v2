@@ -1200,6 +1200,11 @@ function formatDatetime(dt){
 
 function navigate(screen, extra){
   state.screen = screen;
+  const screenGroup = ['dashboard'].includes(screen) ? 'principal'
+    : ['registrar','ocorrencias','gestao','detalhe'].includes(screen) ? 'ocorrencias'
+    : ['alertas','monitoramento','procedimentos','procedimento-detalhe','emergencia'].includes(screen) ? 'seguranca'
+    : ['usuarios'].includes(screen) ? 'administracao' : null;
+  if(screenGroup){ state.navGroupsOpen = state.navGroupsOpen || {}; state.navGroupsOpen[screenGroup] = true; }
   state.sidebarOpen = false;
   state.registrarError = '';
   state.emergencyError = '';
@@ -1441,11 +1446,11 @@ function renderShell(){
         ].map(group=>{
           const items=group.items.filter(k=>navItems.includes(k));
           if(!items.length) return '';
-          const isOpen=state.navGroupsOpen[group.id]===undefined ? items.includes(state.screen) : (state.navGroupsOpen[group.id] || items.includes(state.screen));
+          const isOpen=state.navGroupsOpen[group.id]===undefined ? items.includes(state.screen) : state.navGroupsOpen[group.id];
           return `
             <section class="nav-group">
               <button class="nav-group-toggle" type="button" aria-expanded="${isOpen}" onclick="toggleNavGroup('${group.id}')" title="${group.label}">
-                <span>${group.label}</span><span class="nav-group-chevron ${isOpen?'open':''}">${ICONS.chevron}</span>
+                <span>${group.label}</span><span class="nav-group-chevron ${isOpen?'open':''}">&rsaquo;</span>
               </button>
               <div class="nav-group-items ${isOpen?'open':''}">
                 ${items.map(k=>`

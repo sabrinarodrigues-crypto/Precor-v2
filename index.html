@@ -1332,7 +1332,7 @@ function renderGlobalSearch(){
 function renderShell(){
   const u = state.user;
   const navItems = ROLE_NAV[u.role];
-  const unreadAlerts = state.alerts.filter(a=>!a.read).length;
+  const unreadAlerts = alertsForUser(u).filter(a=>!isAlertRead(a,u)).length;
   const openOcc = occurrencesForUser(u).filter(o=>o.status!=='Encerrada').length;
 
   return `
@@ -1433,7 +1433,7 @@ function renderDashboard(){
       </div>
       ${recentesAlertas.length===0 ? '<div class="card empty-state">Nenhum alerta direcionado a você no momento.</div>' : recentesAlertas.map(a=>`
         <div class="card alert-card ${a.level}" onclick="navigate('alertas')" style="cursor:pointer;">
-          <div class="alert-tags">${critBadge(a.level)}${!a.read ? '<span class="badge badge-novo">Novo</span>' : ''}</div>
+          <div class="alert-tags">${critBadge(a.level)}${!isAlertRead(a,u) ? '<span class="badge badge-novo">Novo</span>' : ''}</div>
           <b class="a-title">${a.title}</b>
           <div class="alert-meta-row"><span>${a.timestamp}</span><span>${a.area}</span></div>
         </div>`).join('')}`;
@@ -2032,11 +2032,18 @@ function renderAttachWidget(imageKey, nameKey){
 function alertsForUser(user=state.user){
   return state.alerts.filter(a=>Array.isArray(a.targetRoles) && a.targetRoles.includes(user.role));
 }
+function isAlertRead(alert, user=state.user){
+  return !!alert.read || (Array.isArray(alert.readBy) && alert.readBy.includes(user.name));
+}
+function markAlertReadForUser(alert, user=state.user){
+  if(!Array.isArray(alert.readBy)) alert.readBy = [];
+  if(!alert.readBy.includes(user.name)) alert.readBy.push(user.name);
+}
 
 function renderAlertas(){
   const u = state.user;
   const meusAlertas = alertsForUser(u);
-  const naoLidos = meusAlertas.filter(a=>!a.read);
+  const naoLidos = meusAlertas.filter(a=>!isAlertRead(a,u));
   const criticos = meusAlertas.filter(a=>a.level==='critico');
   let list;
   if(state.alertTab==='nao-lidos') list = naoLidos;
@@ -2059,14 +2066,14 @@ function renderAlertas(){
         <div class="alert-tags">
           <span class="badge badge-outline">${a.category}</span>
           ${critBadge(a.level)}
-          ${!a.read ? '<span class="badge badge-novo">Novo</span>' : ''}
+          ${!isAlertRead(a,u) ? '<span class="badge badge-novo">Novo</span>' : ''}
           ${linkedOcc ? statusBadge(linkedOcc.status) : ''}
         </div>
         <b class="a-title">${a.title}</b>
         <p>${a.message}</p>
         <div class="alert-meta-row"><span>${a.timestamp}</span><span>${a.area}</span></div>
         <div class="alert-actions">
-          ${!a.read ? '<button class="btn btn-sm" onclick="marcarLida(\''+a.id+'\')">Marcar lida</button>' : ''}
+          ${!isAlertRead(a,u) ? '<button class="btn btn-sm" onclick="marcarLida(\''+a.id+'\')">Marcar lida</button>' : ''}
           ${confirmed
             ? '<span class="badge badge-encerrada">'+ICONS.check+' Confirmado</span>' + (linkedOcc ? '<button class="btn btn-sm" onclick="abrirOcorrencia(\''+a.occurrenceId+'\')">Ver ocorrência</button>' : '')
             : (canAttend
@@ -2082,18 +2089,18 @@ function renderAlertas(){
 function setAlertTab(tab){ state.alertTab = tab; render(); }
 function marcarLida(id){
   const a = state.alerts.find(x=>x.id===id);
-  if(a && a.targetRoles.includes(state.user.role)) a.read=true;
+  if(a && a.targetRoles.includes(state.user.role)) markAlertReadForUser(a);
   render();
 }
 function marcarTodasLidas(){
-  alertsForUser(state.user).forEach(a=>a.read=true);
+  alertsForUser(state.user).forEach(a=>markAlertReadForUser(a));
   render();
 }
 function confirmarAlerta(id){
   const a = state.alerts.find(x=>x.id===id);
   if(!a || !a.targetRoles.includes(state.user.role)) return;
   if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name);
-  a.read=true;
+  markAlertReadForUser(a);
   logAudit('Alerta confirmado', a.id+' — '+a.title);
   render();
 }
@@ -2102,7 +2109,7 @@ function confirmarEAtender(alertId, occurrenceId){
   const occurrence = findOccurrence(occurrenceId);
   if(!a || !a.targetRoles.includes(state.user.role) || !occurrence || !occurrenceInScope(occurrence, state.user)) return;
   if(!a.confirmations.includes(state.user.name)) a.confirmations.push(state.user.name);
-  a.read=true;
+  markAlertReadForUser(a);
   logAudit('Alerta confirmado e ocorrência atendida', a.id+' — '+a.title);
   abrirOcorrencia(occurrenceId);
 }

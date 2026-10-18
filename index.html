@@ -1170,6 +1170,19 @@ function render(){
   const app = document.getElementById('app');
   app.innerHTML = state.screen==='login' ? renderLogin() : renderShell();
 }
+function renderPreservingFocus(inputId){
+  const current = document.getElementById(inputId);
+  const start = current && typeof current.selectionStart==='number' ? current.selectionStart : null;
+  const end = current && typeof current.selectionEnd==='number' ? current.selectionEnd : null;
+  render();
+  const next = document.getElementById(inputId);
+  if(next){
+    next.focus();
+    if(start!==null && end!==null && typeof next.setSelectionRange==='function'){
+      next.setSelectionRange(start,end);
+    }
+  }
+}
 
 /* ============================= LOGIN ============================= */
 
@@ -1819,7 +1832,7 @@ function renderOcorrencias(){
 
   return `
     <div class="dim" style="font-size:12.5px;font-weight:600;margin-bottom:14px;">${scopeDescription(state.user)}</div>
-    <div class="search-box">${ICONS.search}<input type="text" placeholder="Buscar por título ou área..." value="${state.occSearch}" oninput="state.occSearch=this.value; render();"></div>
+    <div class="search-box">${ICONS.search}<input id="occ-search" type="text" placeholder="Buscar por título ou área..." value="${state.occSearch}" oninput="state.occSearch=this.value; renderPreservingFocus('occ-search');"></div>
     <div class="chip-row">${statusTabs.map(s=>`<button class="chip ${state.occStatusTab===s?'active':''}" onclick="state.occStatusTab='${s}'; render();">${s}</button>`).join('')}</div>
     <div class="chip-row">${critTabs.map(c=>`<button class="chip ${state.occCritTab===c?'active':''}" onclick="state.occCritTab='${c}'; render();">${c==='Todos'?'Todos':fmtCrit(c)}</button>`).join('')}</div>
     <div class="results-count">${list.length} ocorrência${list.length===1?'':'s'} encontrada${list.length===1?'':'s'}</div>
@@ -2170,7 +2183,7 @@ function renderProcedimentos(){
   const canManage = state.user.role==='seguranca' || state.user.role==='admin';
 
   return `
-    <div class="search-box">${ICONS.search}<input type="text" placeholder="Buscar procedimentos..." value="${state.procSearch}" oninput="state.procSearch=this.value; render();"></div>
+    <div class="search-box">${ICONS.search}<input id="proc-search" type="text" placeholder="Buscar procedimentos..." value="${state.procSearch}" oninput="state.procSearch=this.value; renderPreservingFocus('proc-search');"></div>
     <div class="chip-row">${cats.map(c=>`<button class="chip ${state.procCategory===c?'active':''}" onclick="state.procCategory='${c}'; render();">${c}</button>`).join('')}</div>
     <div class="results-count">${list.length} procedimento${list.length===1?'':'s'} encontrado${list.length===1?'':'s'}</div>
     ${canManage ? '<button class="btn" style="margin-bottom:14px;" onclick="showToast(\'Cadastro de novo procedimento — funcionalidade de demonstração.\', \'info\')">+ Novo procedimento</button>' : ''}
@@ -2432,6 +2445,10 @@ function startMonitorJitter(){
       s._hist = (s._hist || []).concat(s.value).slice(-6);
     });
     checkPredictiveAlerts();
+    // Não substitua o DOM enquanto o usuário preenche uma leitura manual.
+    // Os valores simulados continuam atualizando em state e a tela será redesenhada
+    // quando o formulário for enviado ou fechado.
+    if(state.screen==='monitoramento' && state.readingFormOpen) return;
     if(state.screen==='monitoramento' || state.screen==='dashboard') render();
   }, 3500);
 }

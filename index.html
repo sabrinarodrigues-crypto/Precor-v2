@@ -209,10 +209,18 @@
   .sidebar-collapse-btn{display:none;background:none;border:none;color:rgba(255,255,255,.75);padding:6px;flex:none;border-radius:8px;}
   .sidebar-collapse-btn:hover{background:rgba(255,255,255,.1);color:#fff;}
   .sidebar-section-label{padding:16px 20px 6px;font-size:11px;font-weight:700;letter-spacing:1px;color:rgba(255,255,255,.5);text-transform:uppercase;white-space:nowrap;overflow:hidden;}
-  .nav{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:10px;}
+  .nav{flex:1;overflow-y:auto;overflow-x:hidden;padding:6px 0 12px;}
+  .nav-group{margin:0 0 5px;}
+  .nav-group-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:11px 20px 7px;background:none;border:0;color:rgba(255,255,255,.54);font-size:10.5px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;text-align:left;}
+  .nav-group-toggle:hover{color:rgba(255,255,255,.9);}
+  .nav-group-chevron{display:flex;align-items:center;transition:transform .18s ease;}
+  .nav-group-chevron svg{width:13px;height:13px;}
+  .nav-group-chevron.open{transform:rotate(90deg);}
+  .nav-group-items{display:none;}
+  .nav-group-items.open{display:block;}
   .nav-item{
     display:flex;align-items:center;gap:13px;width:100%;text-align:left;
-    padding:12px 20px;color:rgba(255,255,255,.85);font-size:14.5px;font-weight:500;background:none;border:none;
+    padding:11px 20px;color:rgba(255,255,255,.85);font-size:14px;font-weight:500;background:none;border:none;
   }
   .nav-item:hover{background:rgba(255,255,255,.06);}
   .nav-item.active{background:rgba(255,255,255,.14);color:#fff;font-weight:700;}
@@ -237,6 +245,10 @@
     .sidebar.collapsed .sidebar-brand-text b{display:none;}
     .sidebar.collapsed .sidebar-collapse-btn{transform:rotate(180deg);}
     .sidebar.collapsed .sidebar-section-label{display:none;}
+    .sidebar.collapsed .nav-group-toggle{justify-content:center;padding:8px 0;font-size:0;}
+    .sidebar.collapsed .nav-group-toggle>span:first-child{display:none;}
+    .sidebar.collapsed .nav-group-chevron{display:none;}
+    .sidebar.collapsed .nav-group-items{display:block;}
     .sidebar.collapsed .nav-item{justify-content:center;padding:13px 0;gap:0;position:relative;}
     .sidebar.collapsed .nav-item .nav-label{display:none;}
     .sidebar.collapsed .nav-badge{
@@ -914,7 +926,7 @@ const seedReadings = [
 /* ---------- Estado global ---------- */
 const state = {
   user:null, screen:'login', selectedLoginUser:null, loginError:'', showDemoUsers:false, showPassword:false,
-  sidebarOpen:false, sidebarCollapsed:false,
+  sidebarOpen:false, sidebarCollapsed:false, navGroupsOpen:{principal:true, ocorrencias:true, seguranca:true, administracao:false},
   occurrences: JSON.parse(JSON.stringify(seedOccurrences)),
   alerts: JSON.parse(JSON.stringify(seedAlerts)),
   procedures: JSON.parse(JSON.stringify(seedProcedures)),
@@ -1188,6 +1200,11 @@ function formatDatetime(dt){
 
 function navigate(screen, extra){
   state.screen = screen;
+  const screenGroup = ['dashboard'].includes(screen) ? 'principal'
+    : ['registrar','ocorrencias','gestao','detalhe'].includes(screen) ? 'ocorrencias'
+    : ['alertas','monitoramento','procedimentos','procedimento-detalhe','emergencia'].includes(screen) ? 'seguranca'
+    : ['usuarios'].includes(screen) ? 'administracao' : null;
+  if(screenGroup){ state.navGroupsOpen = state.navGroupsOpen || {}; state.navGroupsOpen[screenGroup] = true; }
   state.sidebarOpen = false;
   state.registrarError = '';
   state.emergencyError = '';
@@ -1206,6 +1223,12 @@ function navigate(screen, extra){
   render();
   window.scrollTo(0,0);
 }
+function toggleNavGroup(groupId){
+  state.navGroupsOpen = state.navGroupsOpen || {};
+  state.navGroupsOpen[groupId] = !state.navGroupsOpen[groupId];
+  render();
+}
+
 function toggleSidebar(v){ state.sidebarOpen = v; render(); }
 function toggleSidebarCollapse(){
   state.sidebarCollapsed = !state.sidebarCollapsed;
@@ -1415,12 +1438,30 @@ function renderShell(){
       </div>
       <div class="sidebar-section-label">${ROLE_LABELS[u.role]}</div>
       <nav class="nav">
-        ${navItems.map(k=>`
-          <button class="nav-item ${state.screen===k?'active':''}" onclick="navigate('${k}')" title="${NAV_META[k].label}">
-            ${NAV_META[k].icon}<span class="nav-label">${NAV_META[k].label}</span>
-            ${k==='ocorrencias' && openOcc ? '<span class="nav-badge">'+openOcc+'</span>' : ''}
-            ${k==='alertas' && unreadAlerts ? '<span class="nav-badge">'+unreadAlerts+'</span>' : ''}
-          </button>`).join('')}
+        ${[
+          {id:'principal',label:'Visão geral',items:['dashboard']},
+          {id:'ocorrencias',label:'Ocorrências',items:['registrar','ocorrencias','gestao']},
+          {id:'seguranca',label:'Segurança',items:['alertas','monitoramento','procedimentos']},
+          {id:'administracao',label:'Administração',items:['usuarios']}
+        ].map(group=>{
+          const items=group.items.filter(k=>navItems.includes(k));
+          if(!items.length) return '';
+          const isOpen=state.navGroupsOpen[group.id]===undefined ? items.includes(state.screen) : state.navGroupsOpen[group.id];
+          return `
+            <section class="nav-group">
+              <button class="nav-group-toggle" type="button" aria-expanded="${isOpen}" onclick="toggleNavGroup('${group.id}')" title="${group.label}">
+                <span>${group.label}</span><span class="nav-group-chevron ${isOpen?'open':''}">&rsaquo;</span>
+              </button>
+              <div class="nav-group-items ${isOpen?'open':''}">
+                ${items.map(k=>`
+                  <button class="nav-item ${state.screen===k?'active':''}" onclick="navigate('${k}')" title="${NAV_META[k].label}">
+                    ${NAV_META[k].icon}<span class="nav-label">${NAV_META[k].label}</span>
+                    ${k==='ocorrencias' && openOcc ? '<span class="nav-badge">'+openOcc+'</span>' : ''}
+                    ${k==='alertas' && unreadAlerts ? '<span class="nav-badge">'+unreadAlerts+'</span>' : ''}
+                  </button>`).join('')}
+              </div>
+            </section>`;
+        }).join('')}
       </nav>
       <div class="sidebar-foot">
         <div class="sf-avatar">${u.initials}</div>

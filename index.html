@@ -307,8 +307,9 @@
 
   /* ---------- Search / filters ---------- */
   .search-box{position:relative;margin-bottom:14px;}
-  .search-box svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-dim);}
-  .search-box input{width:100%;padding:12px 14px 12px 42px;border-radius:12px;border:1.5px solid var(--border-strong);background:#fff;font-size:14px;}
+  .search-box svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-dim);pointer-events:none;z-index:1;}
+  .search-box input{display:block;width:100%;min-width:0;box-sizing:border-box;padding:12px 14px 12px 46px !important;border-radius:12px;border:1.5px solid var(--border-strong);background:#fff;font-size:14px;}
+  .search-box input::placeholder{color:var(--text-muted);opacity:1;}
   .search-box input:focus{border-color:var(--maroon);}
   .chip-row{display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -18px 10px;padding:2px 18px 6px;scrollbar-width:none;}
   .chip-row::-webkit-scrollbar{display:none;}

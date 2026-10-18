@@ -359,15 +359,17 @@
   .history-image{max-width:220px;max-height:150px;border-radius:8px;border:1px solid var(--border);margin-top:6px;display:block;cursor:pointer;}
 
   /* ---------- Notificações ativas (toast) ---------- */
-  #toast-root{position:fixed;top:14px;left:0;right:0;z-index:300;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:0 14px;}
+  #toast-root{position:fixed;top:14px;right:14px;z-index:300;display:flex;flex-direction:column;align-items:flex-end;gap:7px;pointer-events:none;width:min(360px,calc(100vw - 28px));}
   .toast{
-    max-width:420px;width:100%;background:#fff;border-left:4px solid var(--blue);border-radius:10px;
-    box-shadow:0 8px 24px rgba(20,20,30,.18);padding:12px 14px;display:flex;gap:10px;align-items:flex-start;
-    opacity:0;transform:translateY(-14px);transition:opacity .22s ease, transform .22s ease;pointer-events:auto;
+    width:100%;background:#fff;border:1px solid var(--border);border-left:3px solid var(--blue);border-radius:10px;
+    box-shadow:0 5px 16px rgba(20,20,30,.12);padding:10px 11px;display:flex;gap:9px;align-items:flex-start;
+    opacity:0;transform:translateY(-8px);transition:opacity .2s ease, transform .2s ease;pointer-events:auto;
   }
   .toast.show{opacity:1;transform:translateY(0);}
-  .toast svg{flex:none;margin-top:1px;}
-  .toast-text{font-size:13px;font-weight:600;color:var(--text);line-height:1.4;}
+  .toast svg{flex:none;margin-top:1px;width:17px;height:17px;}
+  .toast-text{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.35;flex:1;min-width:0;}
+  .toast-dismiss{flex:none;background:transparent;border:0;color:var(--text-dim);font-size:19px;line-height:1;padding:0 2px;cursor:pointer;border-radius:4px;}
+  .toast-dismiss:hover{background:var(--bg);color:var(--text);}
   .toast-critico{border-left-color:var(--red);}
   .toast-critico svg{color:var(--red);}
   .toast-sucesso{border-left-color:var(--teal);}
@@ -376,7 +378,7 @@
   .toast-info svg{color:var(--blue);}
   .toast-alerta{border-left-color:var(--orange);}
   .toast-alerta svg{color:var(--orange);}
-  @media (min-width:900px){ #toast-root{left:auto;right:20px;align-items:flex-end;} .toast{width:360px;} }
+  @media (max-width:600px){#toast-root{top:auto;bottom:12px;right:10px;width:calc(100vw - 20px);align-items:stretch;}.toast{padding:10px;}}
 
   .field-error{color:var(--red);font-size:12.5px;font-weight:600;margin:-6px 0 12px;}
   .login-notice{
@@ -988,27 +990,61 @@ function playCriticalBeep(){
 }
 function toggleSound(){ state.soundEnabled = !state.soundEnabled; render(); }
 
+let toastQueue = [];
+const MAX_VISIBLE_TOASTS = 2;
+const MAX_QUEUED_TOASTS = 8;
+
 function showToast(message, level){
   if(level==='critico') playCriticalBeep();
+  const normalized = String(message || '').trim();
+  if(!normalized) return;
+  const root = getToastRoot();
+  const duplicateVisible = [...root.children].some(el=>el.dataset.message===normalized);
+  if(duplicateVisible || toastQueue.some(item=>item.message===normalized)) return;
+  if(root.children.length < MAX_VISIBLE_TOASTS){
+    displayToast(normalized, level, root);
+  } else if(toastQueue.length < MAX_QUEUED_TOASTS){
+    toastQueue.push({message:normalized,level});
+  }
+}
+
+function getToastRoot(){
   let root = document.getElementById('toast-root');
   if(!root){
     root = document.createElement('div');
     root.id = 'toast-root';
-    root.setAttribute('aria-live','assertive');
-    root.setAttribute('aria-atomic','true');
+    root.setAttribute('aria-live','polite');
+    root.setAttribute('aria-relevant','additions');
     document.body.appendChild(root);
   }
+  return root;
+}
+
+function displayToast(message, level, root){
   const el = document.createElement('div');
   el.className = 'toast toast-'+level;
-  const icon = level==='critico' ? ICONS.bellLg : (level==='sucesso' ? ICONS.check : ICONS.info);
-  el.innerHTML = icon+'<div class="toast-text"></div>';
+  el.dataset.message = message;
+  const icon = level==='critico' ? ICONS.bellLg : (level==='sucesso' ? ICONS.check : (level==='alerta' ? ICONS.info : ICONS.info));
+  el.innerHTML = icon+'<div class="toast-text"></div><button class="toast-dismiss" type="button" aria-label="Dispensar notificação" title="Dispensar">×</button>';
   el.querySelector('.toast-text').textContent = message;
+  el.querySelector('.toast-dismiss').addEventListener('click',()=>removeToast(el));
   root.appendChild(el);
   requestAnimationFrame(()=>el.classList.add('show'));
+  el._toastTimer = setTimeout(()=>removeToast(el), level==='critico' ? 9000 : 5000);
+}
+
+function removeToast(el){
+  if(!el || !el.parentNode) return;
+  clearTimeout(el._toastTimer);
+  el.classList.remove('show');
   setTimeout(()=>{
-    el.classList.remove('show');
-    setTimeout(()=>el.remove(), 250);
-  }, 6000);
+    if(el.parentNode) el.remove();
+    const root = document.getElementById('toast-root');
+    while(root && root.children.length < MAX_VISIBLE_TOASTS && toastQueue.length){
+      const next = toastQueue.shift();
+      displayToast(next.message,next.level,root);
+    }
+  },220);
 }
 
 function fmtCrit(c){ return CRIT_LABEL[c] || c; }

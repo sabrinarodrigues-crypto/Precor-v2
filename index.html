@@ -2124,7 +2124,7 @@ function renderAlertas(){
           ${confirmed
             ? '<span class="badge badge-encerrada">'+ICONS.check+' Confirmado</span>' + (linkedOcc ? '<button class="btn btn-sm" onclick="abrirOcorrencia(\''+a.occurrenceId+'\')">Ver ocorrência</button>' : '')
             : (canAttend
-                ? '<button class="btn btn-maroon btn-sm" onclick="confirmarEAtender(\''+a.id+'\',\''+a.occurrenceId+'\')">Confirmar e atender ocorrência</button>'
+                ? '<button class="btn btn-maroon btn-sm" onclick="confirmarEAtender(\''+a.id+'\',\''+a.occurrenceId+'\')">Confirmar e abrir ocorrência</button>'
                 : '<button class="btn btn-maroon btn-sm" onclick="confirmarAlerta(\''+a.id+'\')">Confirmar recebimento</button>' + (linkedOcc ? '<button class="btn btn-sm" onclick="abrirOcorrencia(\''+a.occurrenceId+'\')">Ver ocorrência</button>' : ''))}
         </div>
         ${!linkedOcc ? '<div class="dim" style="font-size:11.5px;margin-top:10px;">Alerta informativo — nenhuma ação adicional necessária.</div>' : ''}

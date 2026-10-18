@@ -1039,9 +1039,15 @@ function findOccurrence(id){ return state.occurrences.find(o=>o.id===id); }
 /* Escopo de visualização por perfil: Liderança vê a própria área; Setor Responsável vê o
    que foi direcionado à sua função; Segurança do Trabalho e Administrador têm visão geral
    da unidade (função de supervisão plantwide). */
+function isOccurrenceForSector(o, user){
+  return user.role==='setor' && (
+    o.responsible===user.area ||
+    (o.responsible==='Setor da área' && o.area===user.area)
+  );
+}
 function occurrencesForUser(user){
   if(user.role==='lideranca') return state.occurrences.filter(o=>o.area===user.area);
-  if(user.role==='setor') return state.occurrences.filter(o=>o.responsible===user.area);
+  if(user.role==='setor') return state.occurrences.filter(o=>isOccurrenceForSector(o,user));
   return state.occurrences;
 }
 function sensorsForUser(user){
@@ -1057,7 +1063,7 @@ function isRelevantToBrigadista(o){
 function occurrenceInScope(o, user){
   if(user.role==='seguranca' || user.role==='admin') return true;
   if(user.role==='lideranca') return o.area===user.area;
-  if(user.role==='setor') return o.responsible===user.area;
+  if(user.role==='setor') return isOccurrenceForSector(o,user);
   if(user.role==='brigadista') return isRelevantToBrigadista(o);
   return false;
 }
@@ -1072,7 +1078,7 @@ function canAdvanceOccurrence(o, user){
   if(nextStep==='Encerrada') return false; // tratado pelo duplo-check dedicado
   if(user.role==='seguranca' || user.role==='admin') return true;
   if(user.role==='lideranca') return o.area===user.area;
-  if(user.role==='setor') return o.responsible===user.area;
+  if(user.role==='setor') return isOccurrenceForSector(o,user);
   if(user.role==='brigadista') return (o.status==='Encaminhada' || o.status==='Em atendimento') && isRelevantToBrigadista(o);
   return false;
 }
@@ -1548,7 +1554,7 @@ function renderRegistrar(){
       </div>
 
       <div class="form-section form-grid-2">
-        <div><label class="field-label">Data e hora</label><input id="f-datetime" type="datetime-local" value="${new Date().toISOString().slice(0,16)}"></div>
+        <div><label class="field-label">Data e hora</label><input id="f-datetime" type="datetime-local" value="${d.datetime || new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16)}"></div>
         <div><label class="field-label">Responsável / setor</label>
           <select id="f-resp">
             ${['Segurança do Trabalho','Manutenção Elétrica','Setor da área','Administrador/TI'].map(r=>`<option ${d.responsible===r?'selected':''}>${r}</option>`).join('')}
@@ -1594,8 +1600,24 @@ function toggleBrigada(){
   render();
 }
 function captureDraft(){
-  if(state.formDraft) return;
-  state.formDraft = {type:'Vazamento', description:'', location:'', area:'Produção — Reatores', criticality:'medio', responsible:'Segurança do Trabalho', observations:'', brigada:false};
+  const d = state.formDraft || {
+    type:'Vazamento', description:'', location:'', area:'Produção — Reatores',
+    criticality:'medio', responsible:'Segurança do Trabalho', observations:'',
+    brigada:false, datetime:''
+  };
+  const readField = (id, fallback) => {
+    const el = document.getElementById(id);
+    return el ? el.value : fallback;
+  };
+  state.formDraft = {
+    ...d,
+    description:readField('f-desc', d.description || ''),
+    location:readField('f-loc', d.location || ''),
+    area:readField('f-area', d.area || 'Produção — Reatores'),
+    responsible:readField('f-resp', d.responsible || 'Segurança do Trabalho'),
+    observations:readField('f-obs', d.observations || ''),
+    datetime:readField('f-datetime', d.datetime || '')
+  };
 }
 
 function submitOccurrence(){
@@ -1607,6 +1629,9 @@ function submitOccurrence(){
   const criticality = state.formDraft.criticality;
   const responsible = document.getElementById('f-resp').value;
   const observations = document.getElementById('f-obs').value.trim();
+  const datetimeInput = document.getElementById('f-datetime');
+  const incidentDateValue = datetimeInput ? datetimeInput.value : state.formDraft.datetime;
+  const incidentDate = incidentDateValue ? new Date(incidentDateValue) : new Date();
   const brigada = !!state.formDraft.brigada;
 
   if(!description || !location){
@@ -1614,6 +1639,12 @@ function submitOccurrence(){
     render();
     return;
   }
+  if(!incidentDateValue || isNaN(incidentDate.getTime())){
+    state.registrarError = 'Informe uma data e hora válidas para a ocorrência.';
+    render();
+    return;
+  }
+  state.formDraft = {...state.formDraft, description, location, area, responsible, observations, datetime:incidentDateValue};
   state.registrarError = '';
 
   occurrenceSeq += 1;
@@ -1624,7 +1655,7 @@ function submitOccurrence(){
   const encaminhadaNote = 'Encaminhada automaticamente para '+responsible+'.' + (brigada ? ' Brigada de Emergência acionada para resposta imediata em campo.' : '');
   const newOcc = {
     id: protocol, type, description, location, area, criticality,
-    datetime: now.toISOString(), responsible, status: 'Encaminhada', observations,
+    datetime: incidentDate.toISOString(), responsible, status: 'Encaminhada', observations,
     history:[
       {step:'Registrada', by:state.user.name, at:nowLabel, note:'Ocorrência registrada pelo usuário.'},
       {step:'Encaminhada', by:'Sistema PRECOR', at:nowLabel, note:encaminhadaNote},
@@ -1633,7 +1664,14 @@ function submitOccurrence(){
 
   const alertId = 'AL-' + (3300 + state.alerts.length + 4);
   const targetRolesByCrit = {baixo:['setor'], medio:['seguranca','setor'], alto:['seguranca'], critico:['seguranca','admin']};
-  const targetRoles = [...targetRolesByCrit[criticality]];
+  const targetRoles = [...(targetRolesByCrit[criticality] || targetRolesByCrit.medio)];
+  const responsibleRole = {
+    'Segurança do Trabalho':'seguranca',
+    'Manutenção Elétrica':'setor',
+    'Setor da área':'setor',
+    'Administrador/TI':'admin'
+  }[responsible];
+  if(responsibleRole && !targetRoles.includes(responsibleRole)) targetRoles.push(responsibleRole);
   if(brigada && !targetRoles.includes('brigadista')) targetRoles.push('brigadista');
   const newAlert = {
     id:alertId, occurrenceId:protocol, level:criticality, category:'Ocorrência',
@@ -1900,6 +1938,7 @@ function renderDetalhe(){
 
 function confirmarEncerramento(id){
   const o = findOccurrence(id);
+  if(!o || !canCloseOccurrence(o,state.user)) return;
   o.status = 'Encerrada';
   o.history.push({step:'Encerrada', by:state.user.name, at:formatDatetime(new Date().toISOString()), note:'Encerramento confirmado após verificação da Segurança do Trabalho (duplo-check).'});
   showToast('Ocorrência '+o.id+' encerrada.', 'sucesso');
@@ -1908,6 +1947,7 @@ function confirmarEncerramento(id){
 }
 function reabrirOcorrencia(id){
   const o = findOccurrence(id);
+  if(!o || !canCloseOccurrence(o,state.user)) return;
   o.status = 'Em atendimento';
   o.history.push({step:'Em atendimento', by:state.user.name, at:formatDatetime(new Date().toISOString()), note:'Ocorrência reaberta — resolução não confirmada no duplo-check da Segurança do Trabalho.'});
   showToast('Ocorrência '+o.id+' reaberta.', 'alerta');
@@ -1916,6 +1956,8 @@ function reabrirOcorrencia(id){
 }
 
 function abrirResolucaoForm(id){
+  const o = findOccurrence(id);
+  if(!o || !canAdvanceOccurrence(o,state.user) || TIMELINE_STEPS[TIMELINE_STEPS.indexOf(o.status)+1]!=='Resolvida') return;
   state.resolveNoteOpen = true;
   state.resolveNoteOccId = id;
   state.resolveNoteImage = null;
@@ -1933,13 +1975,15 @@ function cancelarResolucao(){
   render();
 }
 function confirmarResolucao(id){
-  const texto = document.getElementById('resolve-note').value.trim();
+  const o = findOccurrence(id);
+  if(!o || !canAdvanceOccurrence(o,state.user) || TIMELINE_STEPS[TIMELINE_STEPS.indexOf(o.status)+1]!=='Resolvida') return;
+  const noteEl = document.getElementById('resolve-note');
+  const texto = noteEl ? noteEl.value.trim() : '';
   if(!texto){
     state.resolveError = 'Descreva rapidamente como a ocorrência foi resolvida.';
     render();
     return;
   }
-  const o = findOccurrence(id);
   o.status = 'Resolvida';
   const entry = {step:'Resolvida', by:state.user.name, at:formatDatetime(new Date().toISOString()), note:texto};
   if(state.resolveNoteImage) entry.image = state.resolveNoteImage;
@@ -1955,6 +1999,8 @@ function confirmarResolucao(id){
 }
 
 function abrirAvancoForm(id){
+  const o = findOccurrence(id);
+  if(!o || !canAdvanceOccurrence(o,state.user)) return;
   state.advanceFormOpen = true;
   state.advanceFormOccId = id;
   state.advanceFormImage = null;
@@ -1971,6 +2017,7 @@ function cancelarAvanco(){
 }
 function confirmarAvanco(id){
   const o = findOccurrence(id);
+  if(!o || !canAdvanceOccurrence(o,state.user)) return;
   const idx = TIMELINE_STEPS.indexOf(o.status);
   const next = TIMELINE_STEPS[idx+1];
   if(!next || next==='Encerrada') return; // encerramento passa pelo duplo-check dedicado

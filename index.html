@@ -780,9 +780,9 @@ const NAV_META = {
 const EMERGENCY_TYPES = [
   {type:'Incêndio', icon:ICONS.flame},
   {type:'Vazamento', icon:ICONS.drop},
-  {type:'Evacuação', icon:ICONS.run},
-  {type:'Falha de equipamento', icon:ICONS.gear},
-  {type:'Derramamento', icon:ICONS.drop},
+  {type:'Acidente', icon:ICONS.alert},
+  {type:'Emergência médica', icon:ICONS.medical},
+  {type:'Risco ambiental', icon:ICONS.leaf},
   {type:'Outra emergência', icon:ICONS.dots},
 ];
 
@@ -1168,7 +1168,7 @@ function toggleSidebarCollapse(){
 
 function render(){
   const app = document.getElementById('app');
-  app.innerHTML = state.screen==='login' ? renderLogin() : renderShell();
+  app.innerHTML = state.screen==='emergencia' ? renderEmergencia() : (state.screen==='login' ? renderLogin() : renderShell());
 }
 function renderPreservingFocus(inputId){
   const current = document.getElementById(inputId);
@@ -1213,6 +1213,7 @@ function renderLogin(){
       </div>
       <div class="login-error">${state.loginError}</div>
       <button class="btn btn-primary btn-block btn-lg" onclick="doLogin()">Entrar →</button>
+      <button class="login-emergency-entry" type="button" onclick="abrirEmergencia(\'login\')">${ICONS.boltLg}<span>EMERGÊNCIA<br><small style="font-weight:500;">Acesso rápido, sem login</small></span></button>
 
       <button class="login-help-link" onclick="state.showDemoUsers=!state.showDemoUsers; render();">${ICONS.help} Ver usuários de demonstração</button>
 
@@ -1708,13 +1709,17 @@ function submitOccurrence(){
 
 /* ============================= EMERGÊNCIA (fluxo rápido) ============================= */
 
-function abrirEmergencia(){
+function abrirEmergencia(returnTo){
+  state.emergencyReturnScreen = returnTo || (state.user ? 'dashboard' : 'login');
   state.emergencyStep = 1;
   state.emergencyDraft = {type:'', location:'', detail:''};
   state.lastEmergencyProtocol = null;
-  navigate('emergencia');
+  state.emergencyError = '';
+  state.screen = 'emergencia';
+  state.sidebarOpen = false;
+  render();
 }
-function cancelEmergency(){ navigate('dashboard'); }
+function cancelEmergency(){ state.lastEmergencyProtocol=null; state.screen=state.user?'dashboard':'login'; render(); }
 
 function selectEmergencyType(type){
   state.emergencyDraft.type = type;
